@@ -28,7 +28,7 @@ void tim2_init(uint16_t psc, uint16_t arr)
 	MODIFY_REG(TIM2->SMCR, TIM_SMCR_TS, TIM_SMCR_TS_3 + TIM_SMCR_TS_2 + TIM_SMCR_TS_1);
 
 	// set trigger to reset
-	MODIFY_REG(TIM2->SMCR, TIM_SMCR_SMS, 0b0100<<TIM_SMCR_SMS_Pos);
+	MODIFY_REG(TIM2->SMCR, TIM_SMCR_SMS, 0b0100<<TIM_SMCR_SMS_Pos); //TODO test vs combined reset+trigger mode
 
 	// set trigger source to comp1 out
 	// MODIFY_REG(TIM2->AF1, TIM1_AF1_ETRSEL, TIM1_AF1_ETRSEL_0);

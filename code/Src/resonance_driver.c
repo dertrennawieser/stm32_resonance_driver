@@ -9,7 +9,7 @@
 
 
 volatile uint32_t start_period = 0;
-uint32_t bm_trig_enable=0, bm_trig_disable=0;
+uint32_t output_swap=0, output_unswap=0;
 uint32_t output_enable=0;
 
 uint32_t current_ontime_us = 0;
@@ -117,16 +117,16 @@ void driver_init(uint32_t leadtime_ns, float start_freq, uint32_t timeout_us)
 		// method 2: tim d single shot, start timer with comp 3, comp 3 capture on tim B, dma request set burst trigger to timb reset
 		// second dma request on timd rollover/compare, disable burst trigger
 
-		bm_trig_enable = HRTIM_BMTRGR_TBRST;
-		config_dma(DMA2_Channel2, DMAMUX1_Channel9, 97, (uint32_t)&bm_trig_enable, (uint32_t)&(HRTIM1_COMMON->BMTRGR), true);
+		output_swap = HRTIM_CR2_SWPB;
+		config_dma(DMA2_Channel2, DMAMUX1_Channel9, 97, (uint32_t)&output_swap, (uint32_t)&(HRTIM1_COMMON->CR2), true);
 
-		bm_trig_disable = 0x00000000;
-		config_dma(DMA2_Channel3, DMAMUX1_Channel10, 99, (uint32_t)&bm_trig_disable, (uint32_t)&(HRTIM1_COMMON->BMTRGR), true);
+		output_unswap = 0x00000000;
+		config_dma(DMA2_Channel3, DMAMUX1_Channel10, 99, (uint32_t)&output_unswap, (uint32_t)&(HRTIM1_COMMON->CR2), true);
 
 		// dma2 channel 4 update timd compare with time capture value
 		config_dma(DMA2_Channel4, DMAMUX1_Channel11, 98, (uint32_t)&(HRTIM1_TIMD->CMP1xR), (uint32_t)&(HRTIM1_TIME->CPT1xR), false);
 
-		hrtim_enableburst(PULSE_SKIPPING_IDLE_PERIODS, PULSE_SKIPPING_TOTAL_PERIODS);
+		//hrtim_enableburst(PULSE_SKIPPING_IDLE_PERIODS, PULSE_SKIPPING_TOTAL_PERIODS);
 
 		// method 3: use delayed protection and dma
 		// configure DMA2 CH2 to load repetition counter with 2 to skip one switching period in delayed idle
@@ -210,14 +210,16 @@ void driver_startburstoperation()
 	HRTIM1_TIMB->CMP2xR = start_period/2;
 	HRTIM1_TIMC->CMP2xR = start_period/2;
 
+	SET_BIT(HRTIM1_COMMON->CR2, HRTIM_CR2_TASWU + HRTIM_CR2_TBSWU + HRTIM_CR2_TCSWU);
+
 	TIM5->CNT = 0;
 	SET_BIT(TIM5->CR1, TIM_CR1_CEN);
 
 	TIM2->CNT = 0;
 	TIM2->ARR = start_period;
 	SET_BIT(TIM2->EGR, TIM_EGR_UG);
-	SET_BIT(HRTIM1_COMMON->CR2, HRTIM_CR2_TASWU + HRTIM_CR2_TBSWU + HRTIM_CR2_TCSWU);
-	WRITE_REG(HRTIM1_COMMON->CR2, HRTIM_CR2_TARST + HRTIM_CR2_TBRST + HRTIM_CR2_TCRST + HRTIM_CR2_TERST + HRTIM_CR2_TFRST);
+
+	//WRITE_REG(HRTIM1_COMMON->CR2, HRTIM_CR2_TARST + HRTIM_CR2_TBRST + HRTIM_CR2_TCRST + HRTIM_CR2_TERST + HRTIM_CR2_TFRST);
 	SET_BIT(TIM2->CR1, TIM_CR1_CEN);
 
 }
@@ -232,7 +234,7 @@ void driver_startburstoperation_openloop()
 
 	TIM2->CNT = 0;
 	TIM2->ARR = start_period;
-	WRITE_REG(HRTIM1_COMMON->CR2, HRTIM_CR2_TARST + HRTIM_CR2_TBRST + HRTIM_CR2_TCRST);
+	WRITE_REG(HRTIM1_COMMON->CR2, HRTIM_CR2_TARST + HRTIM_CR2_TBRST + HRTIM_CR2_TCRST); //TODO delete?
 	SET_BIT(TIM2->CR1, TIM_CR1_CEN);
 
 }
