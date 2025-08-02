@@ -26,7 +26,7 @@ void hrtim_init(bool pulse_skipping)
 	MODIFY_REG(HRTIM1_TIMA->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b101<<HRTIM_TIMCR_CK_PSC_Pos);
 	MODIFY_REG(HRTIM1_TIMB->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b101<<HRTIM_TIMCR_CK_PSC_Pos);
 	MODIFY_REG(HRTIM1_TIMC->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b101<<HRTIM_TIMCR_CK_PSC_Pos);
-	MODIFY_REG(HRTIM1_TIMD->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b110<<HRTIM_TIMCR_CK_PSC_Pos);//TODO test
+	MODIFY_REG(HRTIM1_TIMD->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b101<<HRTIM_TIMCR_CK_PSC_Pos);//TODO test
 	MODIFY_REG(HRTIM1_TIME->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b101<<HRTIM_TIMCR_CK_PSC_Pos);
 	MODIFY_REG(HRTIM1_TIMF->TIMxCR, HRTIM_TIMCR_CK_PSC, 0b101<<HRTIM_TIMCR_CK_PSC_Pos);
 
@@ -57,6 +57,9 @@ void hrtim_init(bool pulse_skipping)
 	// enable triggered half mode for tim B and C
 	SET_BIT(HRTIM1_TIMB->TIMxCR2, HRTIM_TIMCR2_TRGHLF);
 	SET_BIT(HRTIM1_TIMC->TIMxCR2, HRTIM_TIMCR2_TRGHLF);
+	// enable deadtime for timer B and C
+	//SET_BIT(HRTIM1_TIMB->OUTxR, HRTIM_OUTR_DTEN);
+	//SET_BIT(HRTIM1_TIMC->OUTxR, HRTIM_OUTR_DTEN);
 
 
 	// set hrtim external event 1 to comp2_out
@@ -96,8 +99,8 @@ void hrtim_init(bool pulse_skipping)
 
 	// set hrtim external event 6 to comp1_out
 	MODIFY_REG(HRTIM1_COMMON->EECR2, HRTIM_EECR2_EE6SRC, HRTIM_EECR2_EE6SRC_1);
-	// event generation on rising+falling edge
-	MODIFY_REG(HRTIM1_COMMON->EECR2, HRTIM_EECR2_EE6SNS, HRTIM_EECR2_EE6SNS_1 + HRTIM_EECR2_EE6SNS_0);
+	// event generation on rising edge
+	MODIFY_REG(HRTIM1_COMMON->EECR2, HRTIM_EECR2_EE6SNS, HRTIM_EECR2_EE6SNS_0);
 	// event filtering output transition after 4 valid samples at f_hrtim sampling frequency
 	MODIFY_REG(HRTIM1_COMMON->EECR3, HRTIM_EECR3_EE6F, HRTIM_EECR3_EE6F_1);
 
@@ -121,6 +124,8 @@ void hrtim_init(bool pulse_skipping)
 	MODIFY_REG(HRTIM1_COMMON->EECR2, HRTIM_EECR2_EE9SRC, HRTIM_EECR2_EE9SRC_1 + HRTIM_EECR2_EE9SRC_0);
 	// event generation on rising edge
 	MODIFY_REG(HRTIM1_COMMON->EECR2, HRTIM_EECR2_EE9SNS, HRTIM_EECR2_EE9SNS_0);
+	// event filtering output transition after 8 valid samples at f_hrtim sampling frequency
+	MODIFY_REG(HRTIM1_COMMON->EECR3, HRTIM_EECR3_EE9F, HRTIM_EECR3_EE9F_2 + HRTIM_EECR3_EE9F_0);
 	// event generation on high level
 	//CLEAR_BIT(HRTIM1_COMMON->EECR2, HRTIM_EECR2_EE9POL);
 
@@ -168,11 +173,13 @@ void hrtim_init(bool pulse_skipping)
 	// tim2 trgo eev only during burst for timeout detection
 	MODIFY_REG(HRTIM1_TIMF->EEFxR1, HRTIM_EEFR1_EE2FLTR, 0b1100<<HRTIM_EEFR1_EE2FLTR_Pos);
 
+	// postpone eev9 (burst start) to not interfere with period capture TODO remove?
+	MODIFY_REG(HRTIM1_TIMA->EEFxR2, HRTIM_EEFR2_EE9FLTR, 0b0010<<HRTIM_EEFR2_EE9FLTR_Pos);
+	SET_BIT(HRTIM1_TIMA->EEFxR2, HRTIM_EEFR2_EE9LTCH);
+
 
 	// reset tim A on event 6
 	SET_BIT(HRTIM1_TIMA->RSTxR, HRTIM_RSTR_EXTEVNT6);
-	// reset tim A on event 9
-	SET_BIT(HRTIM1_TIMA->RSTxR, HRTIM_RSTR_EXTEVNT9);
 	// reset output 2 on eev8
 	SET_BIT(HRTIM1_TIMA->RSTx2R, HRTIM_RST2R_EXTVNT8);
 	// set output 2 on timd cmp1
@@ -181,41 +188,32 @@ void hrtim_init(bool pulse_skipping)
 	SET_BIT(HRTIM1_TIMA->SETx2R, HRTIM_SET2R_EXTVNT9);
 
 
-	// reset tim B on event 9
-	SET_BIT(HRTIM1_TIMB->RSTxR, HRTIM_RSTR_EXTEVNT9);
-	// set output 1, reset output 2 on eev9
-	SET_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_EXTVNT9);
-	SET_BIT(HRTIM1_TIMB->RSTx2R, HRTIM_RST2R_EXTVNT9);
 	// reset tim B on event 2 and 6
 	SET_BIT(HRTIM1_TIMB->RSTxR, HRTIM_RSTR_EXTEVNT2 + HRTIM_RSTR_EXTEVNT6);
-	// toggle output 1 on event 2 and 6
-	SET_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT6);
+	// reset output 1 on event 2 and 6, set on compare 2
+	SET_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_CMP2);
 	SET_BIT(HRTIM1_TIMB->RSTx1R, HRTIM_RST1R_EXTVNT2 + HRTIM_RST1R_EXTVNT6);
-	// toggle output 2 on event 2 and 6
+	// set output 2 on event 2 and 6, reset on compare 2
 	SET_BIT(HRTIM1_TIMB->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT6);
-	SET_BIT(HRTIM1_TIMB->RSTx2R, HRTIM_RST2R_EXTVNT2 + HRTIM_RST2R_EXTVNT6);
+	SET_BIT(HRTIM1_TIMB->RSTx2R, HRTIM_RST2R_CMP2);
 
-	// tim B capture 1 on update
-	SET_BIT(HRTIM1_TIMB->CPT1xCR, HRTIM_CPT1CR_UPDCPT);
+	// tim B capture 1 on event 2 and 6
+	SET_BIT(HRTIM1_TIMB->CPT1xCR, HRTIM_CPT1CR_EXEV2CPT + HRTIM_CPT1CR_EXEV6CPT);
 	// tim B capture 2 on event 8
 	SET_BIT(HRTIM1_TIMB->CPT2xCR, HRTIM_CPT2CR_EXEV8CPT);
 
 
-	// reset tim B on event 9
-	SET_BIT(HRTIM1_TIMC->RSTxR, HRTIM_RSTR_EXTEVNT9);
-	// set output 1, reset output 2 on eev9
-	SET_BIT(HRTIM1_TIMC->SETx1R, HRTIM_SET1R_EXTVNT9);
-	SET_BIT(HRTIM1_TIMC->RSTx2R, HRTIM_RST2R_EXTVNT9);
 	// reset tim C on event 2 and 6
 	SET_BIT(HRTIM1_TIMC->RSTxR, HRTIM_RSTR_EXTEVNT2 + HRTIM_RSTR_EXTEVNT6);
-	// toggle output 1 on event 2 and 6
+	// set output 1 on event 2 and 6, reset on compare 2
 	SET_BIT(HRTIM1_TIMC->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT6);
-	SET_BIT(HRTIM1_TIMC->RSTx1R, HRTIM_RST1R_EXTVNT2 + HRTIM_RST1R_EXTVNT6);
-	// toggle output 2 on event 2 and 6
-	SET_BIT(HRTIM1_TIMC->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT6);
+	SET_BIT(HRTIM1_TIMC->RSTx1R, HRTIM_RST1R_CMP2);
+	// reset output 2 on event 2 and 6, set on compare 2
+	SET_BIT(HRTIM1_TIMC->SETx2R, HRTIM_SET2R_CMP2);
 	SET_BIT(HRTIM1_TIMC->RSTx2R, HRTIM_RST2R_EXTVNT2 + HRTIM_RST2R_EXTVNT6);
 
-	SET_BIT(HRTIM1_TIMC->CPT1xCR, HRTIM_CPT1CR_UPDCPT);
+	// tim C capture 1 on event 2 and 6
+	SET_BIT(HRTIM1_TIMC->CPT1xCR, HRTIM_CPT1CR_EXEV2CPT + HRTIM_CPT1CR_EXEV6CPT);
 	// tim C capture 2 on event 8
 	SET_BIT(HRTIM1_TIMC->CPT2xCR, HRTIM_CPT2CR_EXEV8CPT);
 
@@ -234,14 +232,16 @@ void hrtim_init(bool pulse_skipping)
 	SET_BIT(HRTIM1_TIME->RSTxR, HRTIM_RSTR_UPDATE);
 	// tim E capture 1 on event 6
 	SET_BIT(HRTIM1_TIME->CPT1xCR, HRTIM_CPT1CR_EXEV6CPT);
-	// set output 2 on cmp3
-	SET_BIT(HRTIM1_TIME->SETx2R, HRTIM_SET2R_CMP3);
-	// reset output 2 on eev7 (burst end)
-	SET_BIT(HRTIM1_TIME->RSTx2R, HRTIM_RST2R_EXTVNT7);
+	// set output 2 on event 7
+	SET_BIT(HRTIM1_TIME->SETx2R, HRTIM_SET2R_EXTVNT7);
+	// reset output 2 on eev9
+	SET_BIT(HRTIM1_TIME->RSTx2R, HRTIM_RST2R_EXTVNT9);
 
 
 	// reset tim F on update (tima reset)
 	SET_BIT(HRTIM1_TIMF->RSTxR, HRTIM_RSTR_UPDATE);
+	// reset tim F on eev2, blanking by te2
+	SET_BIT(HRTIM1_TIMF->RSTxR, HRTIM_RSTR_EXTEVNT2);
 	// debug
 	SET_BIT(HRTIM1_TIMF->SETx1R, HRTIM_SET1R_EXTVNT6);
 	// debug
@@ -249,10 +249,10 @@ void hrtim_init(bool pulse_skipping)
 
 	// reset output 2 on update
 	SET_BIT(HRTIM1_TIMF->RSTx2R, HRTIM_RST2R_UPDATE);
-	// set output 2 on cmp1
-	SET_BIT(HRTIM1_TIMF->SETx2R, HRTIM_SET2R_CMP1);
-	// reset output 2 on cmp3
-	SET_BIT(HRTIM1_TIMF->RSTx2R, HRTIM_RST2R_CMP3);
+	// set output 2 on tim e cmp2
+	SET_BIT(HRTIM1_TIMF->SETx2R, HRTIM_SET2R_TIMEVNT8);
+	// reset output 2 on tim e cmp3
+	SET_BIT(HRTIM1_TIMF->RSTx2R, HRTIM_RST2R_TIMEVNT9);
 	// reset output 2 on eev7
 	SET_BIT(HRTIM1_TIMF->RSTx2R, HRTIM_RST2R_EXTVNT7);
 	// tim F capture 2 on event 2
@@ -323,24 +323,11 @@ void hrtim_init(bool pulse_skipping)
 	// enable delayed protection irq for tim B
 	//SET_BIT(HRTIM1_TIMB->TIMxDIER, HRTIM_TIMDIER_DLYPRTIE);
 
-	// enable cpt2 irq for timF - timeout detection
-	SET_BIT(HRTIM1_TIMF->TIMxDIER, HRTIM_TIMDIER_CPT2IE);
-	NVIC_EnableIRQ(HRTIM1_TIMF_IRQn);
+	// enable cmp3 irq for timF - timeout detection
+	SET_BIT(HRTIM1_TIMF->TIMxDIER, HRTIM_TIMDIER_CMP3IE);
 
 	if(pulse_skipping)
 	{
-		// timb dma rq delayed protection entry
-		// SET_BIT(HRTIM1_TIMB->TIMxDIER, HRTIM_TIMDIER_DLYPRTDE);
-
-		// timc dma rq repetition
-		// SET_BIT(HRTIM1_TIMC->TIMxDIER, HRTIM_TIMDIER_REPDE);
-
-		// enable burst mode for tim B and C outputs
-		//SET_BIT(HRTIM1_TIMB->OUTxR, HRTIM_OUTR_IDLM1);
-		//SET_BIT(HRTIM1_TIMB->OUTxR, HRTIM_OUTR_IDLM2);
-		//SET_BIT(HRTIM1_TIMC->OUTxR, HRTIM_OUTR_IDLM1);
-		//SET_BIT(HRTIM1_TIMC->OUTxR, HRTIM_OUTR_IDLM2);
-
 		// DMA requests for pulse skipping method 2
 		// Timer B Capture 2 DMA rq enable on hrtim dma3 channel
 		SET_BIT(HRTIM1_TIMB->TIMxDIER, HRTIM_TIMDIER_CPT2DE);

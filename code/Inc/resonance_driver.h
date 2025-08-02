@@ -42,6 +42,7 @@
 
 
 void driver_init(uint32_t leadtime_ns, float start_freq, uint32_t timeout_us);
+void driver_init_openloop(float freq);
 void driver_arm();
 void driver_disarm();
 void driver_startburstoperation();

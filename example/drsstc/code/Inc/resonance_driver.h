@@ -18,6 +18,8 @@
  * PB12 TIMC CH1 	- Gate drive Bridge 2 high
  * PB13 TIMC CH2	- Gate drive Bridge 2 low
  *
+ * to use burst mode PA2 and PB0 must be connected
+ *
  */
 
 #ifndef RESONANCE_DRIVER_H_
@@ -40,6 +42,7 @@
 
 
 void driver_init(uint32_t leadtime_ns, float start_freq, uint32_t timeout_us);
+void driver_init_openloop(float freq);
 void driver_arm();
 void driver_disarm();
 void driver_startburstoperation();

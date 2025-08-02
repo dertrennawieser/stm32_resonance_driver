@@ -8,6 +8,7 @@
 #include "stm32g4xx.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
 
 #include "systeminit.h"
 #include "hrtim.h"
@@ -19,7 +20,7 @@
 #include "resonance_driver.h"
 
 
-#define PERIOD_MIN 1000
+#define PERIOD_MIN 800
 #define ONTIME_MAX 100
 
 
@@ -30,7 +31,7 @@ uint32_t ontime = 6;
 uint32_t period = 1000;
 
 uint32_t pot_ontime = 0;
-uint32_t pot_period = 0;
+float pot_freq = 0;
 
 bool adc_m1_done = false;
 bool idle = true;
@@ -41,7 +42,7 @@ uint32_t temp = 0;
 void HRTIM_TIMF_IRQn_IRQHandler()
 {
 	// clear irq flag
-	SET_BIT(HRTIM1_TIMF->TIMxICR, HRTIM_TIMICR_CPT2C);
+	SET_BIT(HRTIM1_TIMF->TIMxICR, HRTIM_TIMICR_CMP3C);
 
 	SET_BIT(GPIOB->BSRR, GPIO_BSRR_BS4);
 
@@ -52,23 +53,19 @@ void HRTIM_TIMF_IRQn_IRQHandler()
 	CLEAR_BIT(HRTIM1->sMasterRegs.MCR, HRTIM_MCR_TFCEN);
 
 	// disable timb set output 1 on event 1,2,4
-	CLEAR_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT1 + HRTIM_SET1R_EXTVNT4);
+	CLEAR_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_CMP2);
 	// disable timb set output 2 on event 1,2,4
-	CLEAR_BIT(HRTIM1_TIMB->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT1 + HRTIM_SET2R_EXTVNT4);
+	CLEAR_BIT(HRTIM1_TIMB->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT6);
 	// disable timc set output 1 on event 1,2,4
-	CLEAR_BIT(HRTIM1_TIMC->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT1 + HRTIM_SET1R_EXTVNT4);
+	CLEAR_BIT(HRTIM1_TIMC->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT6);
 	// disable timc set output 2 on event 1,2,4
-	CLEAR_BIT(HRTIM1_TIMC->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT1 + HRTIM_SET2R_EXTVNT4);
+	CLEAR_BIT(HRTIM1_TIMC->SETx2R, HRTIM_SET2R_CMP2);
 
-	// reset timb output 1 on event 1,2,4
-	SET_BIT(HRTIM1_TIMB->RSTx1R, HRTIM_RST1R_EXTVNT2 + HRTIM_RST1R_EXTVNT1 + HRTIM_RST1R_EXTVNT4);
-	// reset timb output 2 on event 1,2,4
-	SET_BIT(HRTIM1_TIMB->RSTx2R, HRTIM_RST2R_EXTVNT2 + HRTIM_RST2R_EXTVNT1 + HRTIM_RST2R_EXTVNT4);
-	// reset timc output 1 on event 1,2,4
-	SET_BIT(HRTIM1_TIMC->RSTx1R, HRTIM_RST1R_EXTVNT2 + HRTIM_RST1R_EXTVNT1 + HRTIM_RST1R_EXTVNT4);
-	// reset timc output 2 on event 1,2,4
-	SET_BIT(HRTIM1_TIMC->RSTx2R, HRTIM_RST2R_EXTVNT2 + HRTIM_RST2R_EXTVNT1 + HRTIM_RST2R_EXTVNT4);
+	while(READ_BIT(HRTIM1_TIMB->TIMxISR, HRTIM_TIMISR_O1CPY) || READ_BIT(HRTIM1_TIMB->TIMxISR, HRTIM_TIMISR_O2CPY) ||
+			READ_BIT(HRTIM1_TIMC->TIMxISR, HRTIM_TIMISR_O1CPY) || READ_BIT(HRTIM1_TIMC->TIMxISR, HRTIM_TIMISR_O2CPY));
 
+	driver_stopburstoperation();
+	driver_disarm();
 }
 
 // adc interrupt for reading bps and ontime potentiometers
@@ -80,8 +77,9 @@ void ADC1_2_IRQHandler()
 		CLEAR_BIT(ADC1->CR, ADC_CR_ADSTART);
 
 		// read DR (clears EOC)
-		pot_period = 4096 - ADC1->DR;
-		period = PERIOD_MIN + (uint32_t)(pot_period*488);
+		pot_freq = (4095-ADC1->DR) / 4095.0f;
+		pot_freq = powf(10.0f, pot_freq*3.0f);
+		period = (uint32_t)(1000000.0f/pot_freq);
 		adc_m1_done = false;
 	}
 	if(READ_BIT(ADC2->ISR, ADC_ISR_EOC))
@@ -95,7 +93,6 @@ void ADC1_2_IRQHandler()
 		adc_m1_done = true;
 
 		adc_startconversion(ADC1, 12);
-
 	}
 }
 
@@ -109,28 +106,17 @@ void TIM6_DACUNDER_IRQHandler()
 		SET_BIT(GPIOC->BSRR, GPIO_BSRR_BS12);
 		if(idle)
 		{
-			// reset timb output 1 on event 1,2,4
-			CLEAR_BIT(HRTIM1_TIMB->RSTx1R, HRTIM_RST1R_EXTVNT2 + HRTIM_RST1R_EXTVNT1 + HRTIM_RST1R_EXTVNT4);
-			// reset timb output 2 on event 1,2,4
-			CLEAR_BIT(HRTIM1_TIMB->RSTx2R, HRTIM_RST2R_EXTVNT2 + HRTIM_RST2R_EXTVNT1 + HRTIM_RST2R_EXTVNT4);
-			// reset timc output 1 on event 1,2,4
-			CLEAR_BIT(HRTIM1_TIMC->RSTx1R, HRTIM_RST1R_EXTVNT2 + HRTIM_RST1R_EXTVNT1 + HRTIM_RST1R_EXTVNT4);
-			// reset timc output 2 on event 1,2,4
-			CLEAR_BIT(HRTIM1_TIMC->RSTx2R, HRTIM_RST2R_EXTVNT2 + HRTIM_RST2R_EXTVNT1 + HRTIM_RST2R_EXTVNT4);
-
 			// disable timb set output 1 on event 1,2,4
-			SET_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT1 + HRTIM_SET1R_EXTVNT4);
+			SET_BIT(HRTIM1_TIMB->SETx1R, HRTIM_SET1R_CMP2);
 			// disable timb set output 2 on event 1,2,4
-			SET_BIT(HRTIM1_TIMB->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT1 + HRTIM_SET2R_EXTVNT4);
+			SET_BIT(HRTIM1_TIMB->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT6);
 			// disable timc set output 1 on event 1,2,4
-			SET_BIT(HRTIM1_TIMC->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT1 + HRTIM_SET1R_EXTVNT4);
+			SET_BIT(HRTIM1_TIMC->SETx1R, HRTIM_SET1R_EXTVNT2 + HRTIM_SET1R_EXTVNT6);
 			// disable timc set output 2 on event 1,2,4
-			SET_BIT(HRTIM1_TIMC->SETx2R, HRTIM_SET2R_EXTVNT2 + HRTIM_SET2R_EXTVNT1 + HRTIM_SET2R_EXTVNT4);
-
-			//SET_BIT(HRTIM1_COMMON->CR2, HRTIM_CR2_TASWU + HRTIM_CR2_TBSWU + HRTIM_CR2_TCSWU + HRTIM_CR2_TDSWU + HRTIM_CR2_TESWU
-				//		+ HRTIM_CR2_TFSWU);
+			SET_BIT(HRTIM1_TIMC->SETx2R, HRTIM_SET2R_CMP2);
 
 			driver_arm();
+			SET_BIT(GPIOC->BSRR, GPIO_BSRR_BR0);
 			driver_startburstoperation();
 
 			//debug
@@ -146,6 +132,9 @@ void TIM6_DACUNDER_IRQHandler()
 		driver_disarm();
 		idle = true;
 	}
+
+	if(period < PERIOD_MIN)
+		period = PERIOD_MIN;
 
 	driver_setburstparams(ontime, period);
 	adc_startconversion(ADC2, 12);
@@ -188,6 +177,7 @@ int main(void)
 	adc_init();
 	tim6_init(1700, 100);
 
+	//driver_init_openloop(180000);
 	driver_init(350, 180000, 20);
 	//driver_arm();
 	driver_setburstparams(20, 1000000);
@@ -205,7 +195,8 @@ int main(void)
 	{
 		//debug
 		temp = TIM2->ARR;
-		if(temp <  100 )
+		//if(temp <  100 )
+		if(READ_BIT(HRTIM1_COMMON->CR2, HRTIM_CR2_SWPB))
 		{
 			//temp = TIM2->ARR;
 			SET_BIT(GPIOB->BSRR, GPIO_BSRR_BS5);
